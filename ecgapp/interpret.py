@@ -11,12 +11,16 @@ def interpret(m, sex=None):
     """Turn a measure() dict into findings grouped as Ritmo / Conducción / Otro."""
     findings = []
     hr, cv = m.get("hr"), m.get("rr_cv")
+    irregular = False
 
     # Rhythm
     if hr is None:
         findings.append(_f("Ritmo", "No se pudo determinar el ritmo", ATTENTION))
     else:
-        irregular = cv is not None and cv > 0.15
+        # Tuned on PTB-XL: both AF records exceed 0.10 on both metrics, sinus
+        # rhythms (including sinus arrhythmia) stay below on at least one.
+        rmssd = m.get("rr_rmssd_rel")
+        irregular = cv is not None and cv > 0.10 and (rmssd is None or rmssd > 0.10)
         has_p = (m.get("p_waves_found") or 0) >= 3 and m.get("pr_ms") is not None
         if irregular:
             findings.append(_f("Ritmo", "Ritmo irregular: valorar fibrilación auricular", ABNORMAL))
@@ -30,7 +34,9 @@ def interpret(m, sex=None):
 
     # Conduction
     conduction = []
-    pr, qrs = m.get("pr_ms"), m.get("qrs_ms")
+    # Without organised atrial activity there is no PR interval to judge.
+    pr = None if irregular else m.get("pr_ms")
+    qrs = m.get("qrs_ms")
     if pr is not None and pr > 200:
         conduction.append(_f("Conducción", f"Bloqueo AV de 1.er grado (PR {pr:.0f} ms)", ABNORMAL))
     elif pr is not None and pr < 120:

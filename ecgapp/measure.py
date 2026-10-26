@@ -10,6 +10,7 @@ import neurokit2 as nk
 import numpy as np
 
 QRS_HALF_WINDOW_S = 0.06
+GLOBAL_PCT = 75  # see _intervals; tuned on PTB-XL+ (QT bias ~ -5 ms)
 
 
 def _fill_nan(x):
@@ -36,23 +37,33 @@ def _median_ms(values, fs):
     return float(np.median(values) / fs * 1000) if values else None
 
 
-def _median_beat(sig, rpeaks, fs):
-    """Median beat from 250 ms before R to 90 % of the RR interval after it."""
+def _median_beat(sig, rpeaks, rr, fs, min_beats=2):
+    """Median beat from 250 ms before R to 90 % of the RR interval after it.
+
+    Beats that run into unplotted (NaN) samples are skipped.
+    """
     pre = int(0.25 * fs)
-    post = int(min(0.6, 0.9 * np.median(np.diff(rpeaks)) / fs) * fs)
+    post = int(min(0.6 * fs, 0.9 * rr))
     beats = [sig[r - pre : r + post] for r in rpeaks if r - pre >= 0 and r + post <= len(sig)]
-    if len(beats) < 2:
+    beats = [b for b in beats if np.all(np.isfinite(b))]
+    if len(beats) < min_beats:
         return None, pre
     return np.median(np.vstack(beats), axis=0), pre
 
 
-def _t_end_tangent(template, pre, qrs_off_rel, fs):
-    """T-wave end (relative to R) by the tangent method, or None."""
+def _t_end_tangent(template, pre, qrs_off_rel, rr, fs):
+    """T-wave end (relative to R) by the tangent method, or None.
+
+    The T peak is searched no later than 60 % of the RR interval after R, so
+    the next beat's P wave (close by in tachycardia or long PR) is not taken
+    for the T wave.
+    """
     start = pre + qrs_off_rel + int(0.08 * fs)
-    if start >= len(template) - 5:
+    stop = min(len(template), pre + int(0.6 * rr))
+    if start >= stop - 5:
         return None
     baseline = np.median(template[max(pre - int(0.06 * fs) - int(0.03 * fs), 0) : pre - int(0.06 * fs)])
-    seg = template[start:] - baseline
+    seg = template[start:stop] - baseline
     peak = int(np.argmax(np.abs(seg)))
     slope = np.gradient(seg)
     after = slope[peak:]
@@ -95,21 +106,44 @@ def _qrs_bounds(template, pre, fs):
     return onset - pre, offset - pre
 
 
-def _intervals(sig, rpeaks, fs):
+def _lead_bounds(sig, peaks, rr, fs, min_beats):
+    """(QRS onset, QRS offset, T end) relative to R for one lead, or None."""
+    template, pre = _median_beat(sig, peaks, rr, fs, min_beats)
+    if template is None:
+        return None
+    q_rel, s_rel = _qrs_bounds(template, pre, fs)
+    return q_rel, s_rel, _t_end_tangent(template, pre, s_rel, rr, fs)
+
+
+def _intervals(rhythm, rpeaks, short_leads, fs):
+    """PR, QRS and QT.
+
+    Like the 12SL "global" intervals, QRS and QT run from the earliest QRS
+    onset to the latest QRS offset / T end across leads: a single lead can
+    hide part of the QRS (e.g. lead II in left bundle branch block). Lower and
+    upper GLOBAL_PCT percentiles stand in for earliest and latest so one noisy lead
+    does not set the value.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        _, waves = nk.ecg_delineate(sig, rpeaks, sampling_rate=fs, method="dwt")
+        _, waves = nk.ecg_delineate(rhythm, rpeaks, sampling_rate=fs, method="dwt")
     n = len(rpeaks)
     p_on = np.asarray(waves.get("ECG_P_Onsets", [np.nan] * n), dtype=float)[:n]
-    template, pre = _median_beat(sig, rpeaks, fs)
-    if template is None:
+    rr = np.median(np.diff(rpeaks))
+
+    bounds = [_lead_bounds(rhythm, rpeaks, rr, fs, min_beats=2)]
+    bounds += [_lead_bounds(sig, peaks, rr, fs, min_beats=1) for sig, peaks in short_leads.values()]
+    bounds = [b for b in bounds if b is not None]
+    if not bounds:
         return {"pr_ms": None, "qrs_ms": None, "qt_ms": None, "p_waves_found": 0}
-    q_rel, s_rel = _qrs_bounds(template, pre, fs)
-    t_end_rel = _t_end_tangent(template, pre, s_rel, fs)
+    q_rel = np.percentile([b[0] for b in bounds], 100 - GLOBAL_PCT)
+    s_rel = np.percentile([b[1] for b in bounds], GLOBAL_PCT)
+    t_ends = [b[2] for b in bounds if b[2] is not None]
+    t_end_rel = np.percentile(t_ends, GLOBAL_PCT) if t_ends else None
     return {
         "pr_ms": _median_ms(rpeaks + q_rel - p_on, fs),
-        "qrs_ms": (s_rel - q_rel) / fs * 1000,
-        "qt_ms": None if t_end_rel is None else (t_end_rel - q_rel) / fs * 1000,
+        "qrs_ms": float((s_rel - q_rel) / fs * 1000),
+        "qt_ms": None if t_end_rel is None else float((t_end_rel - q_rel) / fs * 1000),
         "p_waves_found": int(np.isfinite(p_on).sum()),
     }
 
@@ -122,7 +156,9 @@ def _net_qrs(sig, rpeaks, fs):
         seg = sig[max(r - half, 0) : r + half]
         if len(seg) < half or not np.all(np.isfinite(seg)):
             continue
-        base = np.median(sig[max(r - 3 * half, 0) : max(r - 2 * half, 1)]) if r > 2 * half else np.median(seg)
+        # PR-segment baseline; it may fall outside the lead's 2.5 s window.
+        pre_seg = sig[max(r - 3 * half, 0) : max(r - 2 * half, 1)]
+        base = np.nanmedian(pre_seg) if np.isfinite(pre_seg).any() else np.median(seg)
         seg = seg - base
         nets.append(seg.max() + seg.min())
         r_amp.append(max(seg.max(), 0.0))
@@ -159,9 +195,24 @@ def measure(leads, fs):
     out["rr_ms"] = float(np.median(rr) * 1000)
     out["hr"] = float(60 / np.median(rr))
     out["rr_cv"] = float(np.std(rr) / np.mean(rr))
+    out["rr_rmssd_rel"] = float(np.sqrt(np.mean(np.diff(rr) ** 2)) / np.mean(rr)) if len(rr) > 2 else None
+
+    # The other leads: gaps filled, NaN outside their own 2.5 s window, and
+    # only the R peaks that fall inside it.
+    short_leads = {}
+    for name, sig in leads.items():
+        if sig is None or name == "II":
+            continue
+        sig, sig_ok = _fill_nan(sig)
+        if sig is None:
+            continue
+        inside = np.array([r for r in rpeaks if sig_ok[max(r - half, 0) : r + half].mean() > 0.5], dtype=int)
+        plotted = sig_ok | _within_plotted(sig_ok)
+        sig = np.where(plotted, sig, np.nan)
+        short_leads[name] = (sig, inside)
 
     try:
-        out.update(_intervals(clean, rpeaks, fs))
+        out.update(_intervals(clean, rpeaks, short_leads, fs))
     except Exception as exc:  # NeuroKit2 can fail on very noisy strips
         out["warnings"].append(f"Delineación de ondas fallida: {exc}")
 
@@ -170,18 +221,7 @@ def measure(leads, fs):
         out["qtc_ms"] = out["qt_ms"] / np.sqrt(rr_s)
         out["qtc_fridericia_ms"] = out["qt_ms"] / np.cbrt(rr_s)
 
-    amps = {}
-    for name, sig in leads.items():
-        if sig is None or name == "II":
-            continue
-        sig, sig_ok = _fill_nan(sig)
-        if sig is None:
-            continue
-        # Only beats inside the lead's own 2.5 s window, with the gaps filled.
-        inside = np.array([r for r in rpeaks if sig_ok[max(r - half, 0) : r + half].mean() > 0.5], dtype=int)
-        # Interpolation also extends edge values across the unplotted columns.
-        sig = np.where(sig_ok | _within_plotted(sig_ok), sig, np.nan)
-        amps[name] = _net_qrs(sig, inside, fs)
+    amps = {name: _net_qrs(sig, inside, fs) for name, (sig, inside) in short_leads.items()}
     amps["II"] = _net_qrs(rhythm, rpeaks, fs)
 
     if amps.get("I") and amps.get("aVF"):
