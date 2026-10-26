@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ECG Lector</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>ECG Lector</h1>
+    <p class="disclaimer">Prototipo de investigación. No es un dispositivo médico.</p>
+  </header>
+
+  <main>
+    <section class="card" id="upload-card">
+      <h2>Analizar un ECG</h2>
+      <p class="hint">Foto o escaneo de un ECG de 12 derivaciones (3×4 + tira de ritmo, 25 mm/s, 10 mm/mV).</p>
+      <form id="upload-form">
+        <label class="file">
+          <input type="file" id="image" name="image" accept="image/*" capture="environment" required>
+          <span id="file-label">Elegir foto o tomarla con la cámara</span>
+        </label>
+        <img id="preview" alt="" hidden>
+        <label class="field">Sexo (para el límite de QT)
+          <select name="sex">
+            <option value="">Sin dato</option>
+            <option value="F">Mujer</option>
+            <option value="M">Hombre</option>
+          </select>
+        </label>
+        <button type="submit" id="analyze-btn">Analizar</button>
+      </form>
+    </section>
+
+    <section class="card" id="progress-card" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="progress-text">En cola…</p>
+      <p class="hint" id="progress-time"></p>
+    </section>
+
+    <section class="card error" id="error-card" hidden></section>
+
+    <section id="results" hidden>
+      <div class="card ecg">
+        <img id="ecg-img" alt="ECG digitalizado">
+      </div>
+
+      <h3 class="section-title">Evaluación general del ECG</h3>
+      <div class="card list" id="findings"></div>
+
+      <h3 class="section-title">Mediciones del ECG</h3>
+      <div class="card grid" id="measurements"></div>
+
+      <div class="card warn" id="warnings" hidden></div>
+
+      <div class="actions">
+        <a class="button" id="pdf-link" href="#" download>Descargar informe PDF</a>
+        <button type="button" class="secondary" id="new-btn">Analizar otro ECG</button>
+      </div>
+    </section>
+
+    <h3 class="section-title">Calculadoras</h3>
+    <div class="card list" id="calculators"></div>
+  </main>
+
+  <dialog id="calc-dialog">
+    <form method="dialog" id="calc-form">
+      <h2 id="calc-title"></h2>
+      <p class="hint" id="calc-desc"></p>
+      <div id="calc-fields"></div>
+      <div id="calc-result" hidden></div>
+      <div class="actions">
+        <button type="button" id="calc-run">Calcular</button>
+        <button value="close" class="secondary">Cerrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

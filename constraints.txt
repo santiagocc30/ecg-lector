@@ -1,0 +1,3 @@
+numpy<2
+pandas<3
+imagecodecs<2025

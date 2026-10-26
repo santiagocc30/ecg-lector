@@ -1,0 +1,122 @@
+:root {
+  --bg: #f2f4f8;
+  --card: #ffffff;
+  --text: #1c2230;
+  --muted: #5b6475;
+  --border: #e3e7ee;
+  --accent: #1f4fd6;
+  --accent-text: #ffffff;
+  --normal: #1a7f37;
+  --atencion: #b35900;
+  --alterado: #c62828;
+  --warn-bg: #fff6e5;
+  --error-bg: #fdecec;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151c;
+    --card: #1c212b;
+    --text: #e8ebf1;
+    --muted: #9aa3b5;
+    --border: #2c3341;
+    --accent: #6d8cff;
+    --accent-text: #0d1220;
+    --normal: #4cc26b;
+    --atencion: #f0a548;
+    --alterado: #ff6b6b;
+    --warn-bg: #2e2516;
+    --error-bg: #3a1d1d;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.top { padding: 20px 16px 8px; max-width: 760px; margin: 0 auto; }
+.top h1 { margin: 0; font-size: 1.6rem; }
+.disclaimer { margin: 4px 0 0; color: var(--muted); font-size: .85rem; }
+main { max-width: 760px; margin: 0 auto; padding: 8px 16px 48px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card h2 { margin: 0 0 4px; font-size: 1.2rem; }
+.hint { color: var(--muted); font-size: .9rem; margin: 4px 0 12px; }
+.section-title { color: var(--muted); font-weight: 600; font-size: 1.05rem; margin: 24px 4px 8px; }
+
+form { display: grid; gap: 12px; }
+.file {
+  display: block;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+.file input { display: none; }
+#preview { max-width: 100%; border-radius: 8px; }
+.field { display: grid; gap: 4px; color: var(--muted); font-size: .9rem; }
+select, input[type=number] {
+  font: inherit; padding: 10px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+}
+button, .button {
+  font: inherit; font-weight: 600; text-align: center; text-decoration: none;
+  padding: 12px 18px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--accent); color: var(--accent-text);
+}
+button:disabled { opacity: .5; cursor: default; }
+.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+
+#progress-card { text-align: center; }
+.spinner {
+  width: 36px; height: 36px; margin: 8px auto;
+  border: 4px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error { background: var(--error-bg); color: var(--alterado); }
+.warn { background: var(--warn-bg); font-size: .9rem; }
+.warn ul { margin: 4px 0 0; padding-left: 20px; }
+
+.ecg { padding: 6px; overflow-x: auto; }
+.ecg img { display: block; width: 100%; min-width: 560px; border-radius: 8px; }
+
+.list { padding: 0 16px; }
+.list .row { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.list .row:last-child { border-bottom: 0; }
+.row .label { color: var(--muted); font-size: .85rem; }
+.row .value { font-size: 1.05rem; font-weight: 500; }
+.row .value.normal { color: var(--text); }
+.row .value.atencion { color: var(--atencion); }
+.row .value.alterado { color: var(--alterado); }
+.calc-row { display: flex; justify-content: space-between; align-items: center; cursor: pointer; width: 100%;
+  background: none; color: inherit; border-radius: 0; padding: 14px 0; text-align: left; font-weight: 400; }
+.calc-row .chev { color: var(--muted); font-size: 1.4rem; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 480px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+.metric .label { color: var(--muted); font-size: .8rem; }
+.metric .value { font-size: 1.15rem; font-weight: 600; }
+
+dialog {
+  width: min(560px, calc(100vw - 32px)); border: 0; border-radius: 16px;
+  background: var(--card); color: var(--text); padding: 20px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+#calc-fields { display: grid; gap: 12px; }
+.check { display: flex; gap: 10px; align-items: flex-start; }
+.check input { margin-top: 4px; width: 18px; height: 18px; }
+#calc-result { border-radius: 12px; padding: 12px; border: 1px solid var(--border); }
+#calc-result .score { font-size: 1.6rem; font-weight: 700; }

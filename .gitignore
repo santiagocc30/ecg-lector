@@ -1,0 +1,6 @@
+vendor/
+__pycache__/
+.venv/
+data/
+
+docs/capturas-pmcardio/
