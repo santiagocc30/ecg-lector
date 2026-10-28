@@ -1,6 +1,7 @@
 """Image -> digitised leads -> measurements -> findings -> rendered ECG."""
 import numpy as np
 
+from ecgapp import ecgfm
 from ecgapp.digitize import digitize
 from ecgapp.interpret import interpret
 from ecgapp.measure import measure
@@ -25,6 +26,17 @@ def analyze(image, sex=None, progress=lambda step: None):
     progress("Interpretando")
     findings = interpret(m, sex=sex)
 
+    ai = None
+    if ecgfm.available():
+        progress("Evaluación con IA (ECG-FM)")
+        try:
+            probs = ecgfm.predict(leads, fs, rpeaks=m.get("rpeaks"))
+            ai = {"model": "ECG-FM (bowang-lab, MIMIC-IV-ECG)", "findings": ecgfm.summarize(probs),
+                  "probabilities": {k: round(v, 3) for k, v in probs.items()},
+                  "poor_quality": probs.get("Poor data quality", 0) >= ecgfm.PROBABLE}
+        except Exception as exc:  # the AI section is optional; never fail the analysis for it
+            m.setdefault("warnings", []).append(f"ECG-FM no pudo evaluar el ECG: {exc}")
+
     progress("Dibujando ECG")
     png = render_ecg(leads, fs, header="ECG digitalizado", compact=True)
 
@@ -35,6 +47,8 @@ def analyze(image, sex=None, progress=lambda step: None):
         warnings.append(f"Derivaciones no detectadas: {', '.join(missing)}")
     if abs(dig["rotation_deg"]) > 5:
         warnings.append(f"Imagen girada {dig['rotation_deg']:.1f}°: la precisión puede ser menor.")
+    if ai and ai["poor_quality"]:
+        warnings.append("La IA considera que la calidad del registro es mala: interpreta los resultados con cautela.")
 
     measurements = {
         "hr": _round(m["hr"]), "rr_ms": _round(m["rr_ms"]), "pr_ms": _round(m["pr_ms"]),
@@ -49,6 +63,7 @@ def analyze(image, sex=None, progress=lambda step: None):
                   for n, s in leads.items()},
         "measurements": measurements,
         "findings": findings,
+        "ai": ai,
         "quality": {"leads_detected": len(detected), "rotation_deg": round(dig["rotation_deg"], 2), "warnings": warnings},
         "disclaimer": DISCLAIMER,
     }

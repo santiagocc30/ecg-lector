@@ -4,8 +4,10 @@ Differences from vendor's src/run/digitize.py:
 - the nnU-Net model is loaded once and run in-process (no CLI, no temp dirs);
 - test-time mirroring is off by default (several times faster on CPU);
 - out-of-range leads are baseline-corrected one by one instead of rescaling
-  every lead to [-1, 1], which destroyed the amplitudes.
+  every lead to [-1, 1], which destroyed the amplitudes;
+- lead II is clipped to the columns' x-range (see trim_rhythm_strip).
 """
+import os
 import sys
 import threading
 from pathlib import Path
@@ -26,6 +28,9 @@ from src.run.digitize import cut_binary, get_rotation_angle, vectorise  # noqa: 
 
 LEAD_NAMES = list(LEAD_LABEL_MAPPING.keys())
 MAX_ABS_MV = 5.0
+# Sliding-window step as a fraction of the 1024x1280 patch. 0.5 (nnU-Net's
+# default) needs 9 patches on a 1700x2200 page; 1.0 needs 4.
+TILE_STEP_SIZE = float(os.environ.get("ECG_TILE_STEP", "0.5"))
 
 _predictor = None
 _lock = threading.Lock()
@@ -39,7 +44,7 @@ def get_predictor(use_mirroring=False):
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             p = nnUNetPredictor(
-                tile_step_size=0.5,
+                tile_step_size=TILE_STEP_SIZE,
                 use_mirroring=use_mirroring,
                 perform_everything_on_device=device.type == "cuda",
                 device=device,
@@ -68,6 +73,32 @@ def segment(image):
     return torch.from_numpy(seg.astype(np.uint8))[None]
 
 
+def trim_rhythm_strip(mask):
+    """Clip lead II (the rhythm strip) to the x-range of the 3x4 columns.
+
+    The segmentation often labels the tail of the calibration pulse left of
+    the rhythm strip as lead II. Vectorisation maps the mask's full width to
+    10 s, so a few extra pixels stretch the time axis and the beats drift
+    out of place (~100 ms by the end of the strip). The strip starts with
+    the first column (I/III) and ends with the last (V4/V6).
+    """
+    lab = mask[0]
+
+    def x_extent(names):
+        xs = [torch.nonzero(lab == LEAD_LABEL_MAPPING[n], as_tuple=True)[1] for n in names]
+        xs = [x for x in xs if len(x)]
+        return (min(x.min().item() for x in xs), max(x.max().item() for x in xs)) if xs else None
+
+    first, last = x_extent(("I", "III")), x_extent(("V4", "V6"))
+    if first is None or last is None:
+        return mask
+    outside = lab == LEAD_LABEL_MAPPING["II"]
+    outside[:, first[0] : last[1] + 1] = False
+    out = mask.clone()
+    out[0][outside] = 0
+    return out
+
+
 def _fix_baseline(signal):
     """Remove a constant offset when a lead lands far from 0 mV."""
     finite = signal[np.isfinite(signal)]
@@ -89,7 +120,7 @@ def digitize(image):
     angle = 0.0 if np.isnan(angle) else float(angle)
     image_rot = rotate(image, angle)
 
-    mask = segment(image_rot)
+    mask = trim_rhythm_strip(segment(image_rot))
     masks, positions, _ = cut_binary(mask, image_rot)
 
     widths = [m.shape[2] for m in masks.values() if m is not None]

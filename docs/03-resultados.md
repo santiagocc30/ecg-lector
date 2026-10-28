@@ -4,8 +4,10 @@ Fecha: 2026-10-26 · Equipo: CPU (AMD RX 6600 sin CUDA), 16 GB RAM.
 
 ## 1. Tests automáticos
 
-`pytest tests` → **24 tests, todos pasan**: calculadoras, reglas de interpretación, mediciones sobre
-un ECG sintético con intervalos conocidos (FC, PR, QRS, QT), renderizado y API.
+`pytest tests` → **30 tests, todos pasan**: calculadoras, reglas de interpretación, mediciones sobre
+un ECG sintético con intervalos conocidos (FC, PR, QRS, QT), recorte de la tira de ritmo,
+preparación de la entrada de ECG-FM (reconstrucción de miembros, relleno con latidos, niveles),
+renderizado y API.
 
 ## 2. Conjunto de evaluación
 
@@ -93,15 +95,70 @@ el código de mediciones) y sobre la digitalizada (prueba toda la cadena).
 - 22 registros son pocos: los porcentajes tienen mucha incertidumbre y los umbrales se ajustaron
   sobre este mismo conjunto. Hay que validar con un conjunto distinto y más grande.
 
-## 6. Comparación con la app de referencia
+## 6. IA: ECG-FM (`scripts/evaluate_ecgfm.py`)
+
+[ECG-FM](https://github.com/bowang-lab/ecg-fm) (código y pesos MIT) es un modelo de 90,9 M de
+parámetros ajustado con MIMIC-IV-ECG para 17 diagnósticos. En CPU tarda **~0,3 s por ECG**.
+
+### El problema del formato en papel
+
+ECG-FM espera 5 s simultáneos de las 12 derivaciones; un ECG 3×4 solo muestra 2,5 s de cada una
+(salvo la tira de ritmo II). Medimos tres entradas con los mismos 22 registros:
+**completa** (señal original, límite superior), **papel** (original recortada como en el 3×4) y
+**digitalizada** (lo que lee la app de la imagen).
+
+| Cambio (entrada «papel», umbral 0,5) | Aciertos | Falsos positivos |
+|---|---|---|
+| Huecos a cero | 41/44 | 33 |
+| + derivaciones de miembros reconstruidas (Einthoven/Goldberger) y bordes suavizados | 39/44 | 36 |
+| + huecos rellenados con el **latido promedio del propio paciente** en el ritmo de la II | 36/44 | 25 |
+| + **calibración** de probabilidades (deshacer el `pos_weight` del entrenamiento) | 33/44 | 7 |
+
+El diagnóstico por partes mostró que el modelo depende sobre todo de las precordiales: recortarlas
+duplicaba los falsos positivos y quitarlas del todo era aún peor.
+
+La calibración resta `log(pos_weight)` a cada logit, con los pesos del propio archivo de
+entrenamiento del modelo (`label_def.csv`). No se ajustó sobre nuestros datos. Sin ella, el modelo
+marcaba extrasístoles en casi todos los ECG.
+
+### Resultado (probabilidades calibradas)
+
+| Entrada | Umbral 0,5 («probable») | Umbral 0,25 («posible») |
+|---|---|---|
+| Completa | 35/44, 3 FP | 37/44, 7 FP |
+| Papel | 33/44, 7 FP | 36/44, 13 FP |
+| Digitalizada (preliminar*) | 28/44, 13 FP | 35/44, 30 FP |
+
+La diferencia media de probabilidad entre «papel» y «completa» es de solo **0,04**: el relleno con
+latidos del paciente recupera casi todo lo que pierde el formato 3×4.
+
+\* Medido antes de corregir la lectura de la tira de ritmo (ver abajo). Pendiente de repetir.
+
+### Fallo de digitalización encontrado gracias a ECG-FM
+
+En los bloqueos de rama izquierda, ECG-FM acertaba con la señal en papel (99 %) pero fallaba con
+la digitalizada (14–34 %). Causa: la máscara de la derivación II incluía la cola del pulso de
+calibración, y como la vectorización reparte los 10 s sobre todo el ancho de la máscara, los latidos
+se desplazaban hasta ~100 ms al final de la tira. Recortar la II al rango horizontal de las
+columnas sube su correlación en el registro 180 de 0,33 a 0,57; el resto de la diferencia se debe a
+que las ondas S de V3 invaden la franja de la tira de ritmo.
+
+### En la app
+
+Sección «Evaluación con IA · ECG-FM (experimental)»: diagnósticos con probabilidad calibrada
+≥ 25 %, en dos niveles («probable» ≥ 50 %, «posible» 25–50 %), y un aviso si el modelo considera
+que el registro es de mala calidad. También aparece en el PDF.
+
+## 7. Comparación con la app de referencia
 
 | Aspecto | App de referencia | ECG Lector |
 |---|---|---|
 | Digitalización | Sí, < 7 s (servidor) | Sí, ~90 s (CPU local) |
 | Fotos reales | Validado | **No validado** |
 | Mediciones | De pago | Gratis; error frente a 12SL en §4 |
-| Ritmo / conducción | Modelo de IA (50+ hallazgos) | Reglas: 10 hallazgos |
-| Infarto con oclusión / FEVI | Sí | No |
+| Ritmo / conducción | Modelo de IA (50+ hallazgos) | Reglas (10 hallazgos) + ECG-FM (17 diagnósticos) |
+| Infarto | Sí, incluido infarto con oclusión | ECG-FM «Infarto» (sin distinguir oclusión aguda) |
+| FEVI | Sí | No |
 | Calculadoras | Varias | 4 (HEART, CHA₂DS₂-VA, HAS-BLED, Wells) |
 | Informe PDF | Sí | Sí |
 | Certificación médica | Sí | **No: prototipo de investigación** |
@@ -109,7 +166,7 @@ el código de mediciones) y sobre la digitalizada (prueba toda la cadena).
 Pendiente: pasar las mismas imágenes por la app de referencia y anotar sus resultados en
 `docs/comparacion.csv` para una comparación caso a caso.
 
-## 7. Próximos pasos sugeridos
+## 8. Próximos pasos sugeridos
 
 1. Probar con **fotos reales** y añadir corrección de perspectiva.
 2. Acelerar la inferencia (ONNX Runtime + DirectML para la GPU AMD).

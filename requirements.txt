@@ -13,3 +13,8 @@ uvicorn[standard]
 python-multipart
 pytest
 httpx
+# ECG-FM (optional AI section)
+transformers<5
+hydra-core
+omegaconf
+huggingface-hub

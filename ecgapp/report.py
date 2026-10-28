@@ -51,6 +51,18 @@ def build_report(result, ecg_png):
                 y -= 0.025
                 fig.text(0.10, y, ("• " if i == 0 else "  ") + line, fontsize=10, color=LEVEL_COLOR.get(f["level"], "black"))
 
+        ai = result.get("ai")
+        if ai:
+            y -= 0.05
+            fig.text(0.08, y, "Evaluación con IA (ECG-FM, experimental)", fontsize=13, weight="bold")
+            if not ai["findings"]:
+                y -= 0.025
+                fig.text(0.10, y, "Sin hallazgos por encima del 25 %", fontsize=10)
+            for f in ai["findings"]:
+                y -= 0.025
+                fig.text(0.10, y, f"• {f['text']}", fontsize=10, color=LEVEL_COLOR.get(f["level"], "black"))
+                fig.text(0.60, y, f"{f['band']} · {round(f['probability'] * 100)} %", fontsize=10, color="#555")
+
         warnings = result["quality"]["warnings"]
         if warnings:
             y -= 0.05

@@ -105,6 +105,18 @@ button:disabled { opacity: .5; cursor: default; }
   background: none; color: inherit; border-radius: 0; padding: 14px 0; text-align: left; font-weight: 400; }
 .calc-row .chev { color: var(--muted); font-size: 1.4rem; }
 
+.tag {
+  font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; vertical-align: middle;
+}
+.ai-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.bar { height: 6px; border-radius: 3px; background: var(--border); margin-top: 8px; overflow: hidden; }
+.fill { height: 100%; border-radius: 3px; background: var(--muted); }
+.fill.normal { background: var(--normal); }
+.fill.atencion { background: var(--atencion); }
+.fill.alterado { background: var(--alterado); }
+.ai-note { margin: -8px 4px 0; }
+
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 @media (max-width: 480px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 .metric .label { color: var(--muted); font-size: .8rem; }

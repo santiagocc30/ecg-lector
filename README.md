@@ -6,6 +6,8 @@ App web que lee la foto de un ECG de 12 derivaciones, la digitaliza con
 - el ECG redibujado sobre cuadrícula,
 - mediciones (FC, PR, QRS, QT, QTc, eje, Sokolow-Lyon),
 - interpretación por reglas (ritmo, conducción, otros),
+- evaluación con IA ([ECG-FM](https://github.com/bowang-lab/ecg-fm), experimental): 17 diagnósticos
+  con probabilidad calibrada, incluido infarto, flutter, extrasístoles y marcapasos,
 - calculadoras clínicas (HEART, CHA₂DS₂-VA, HAS-BLED, Wells EP),
 - un informe PDF.
 
@@ -24,6 +26,17 @@ py -3.11 -m venv .venv
 .venv\Scripts\pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 .venv\Scripts\pip install -c constraints.txt -r requirements.txt
 .venv\Scripts\pip install -c constraints.txt vendor\ECG-Digitiser\nnUNet
+```
+
+### IA opcional: ECG-FM (~1 GB)
+
+`fairseq-signals` se importa desde su carpeta; no hace falta instalarlo ni compilar nada.
+Si falta el modelo, la app funciona igual, sin la sección de IA.
+
+```bash
+git clone --depth 1 https://github.com/Jwoo5/fairseq-signals.git vendor/fairseq-signals
+git clone --depth 1 https://github.com/bowang-lab/ecg-fm.git vendor/ecg-fm
+.venv\Scripts\python -c "from huggingface_hub import hf_hub_download; hf_hub_download('wanglab/ecg-fm', 'mimic_iv_ecg_finetuned.pt', local_dir='vendor/ecg-fm/ckpts')"
 ```
 
 ## Uso
@@ -54,7 +67,7 @@ En CPU cada análisis tarda unos 90 segundos.
 | `tests/` | pytest |
 | `scripts/` | generación de imágenes de prueba y evaluación |
 | `docs/` | investigación, plano y resultados |
-| `vendor/` | ECG-Digitiser (no versionado) |
+| `vendor/` | ECG-Digitiser, ECG-FM y fairseq-signals (no versionados) |
 
 ## Créditos y licencias de terceros
 
@@ -65,6 +78,8 @@ En CPU cada análisis tarda unos 90 segundos.
 - **PTB-XL** y **PTB-XL+** (PhysioNet, CC BY 4.0): solo se descargan para las pruebas; no se
   incluyen en el repositorio.
 - **NeuroKit2** (MIT) para la detección de picos R y ondas P.
+- **ECG-FM** (McKeen et al., código y pesos MIT; [arXiv:2408.05178](https://arxiv.org/abs/2408.05178)),
+  ajustado con MIMIC-IV-ECG, y **fairseq-signals** (MIT). Se descargan aparte en `vendor/`.
 - Las calculadoras implementan puntuaciones clínicas publicadas (HEART, CHA₂DS₂-VA, HAS-BLED, Wells).
 
 PMcardio es una marca de Powerful Medical. Se menciona en `docs/` solo como producto de

@@ -85,6 +85,24 @@ function showResult(id, result) {
     findings.append(row);
   }
 
+  const ai = result.ai;
+  const aiList = $("#ai-findings");
+  aiList.replaceChildren();
+  if (ai) {
+    if (!ai.findings.length) {
+      aiList.append(el("div", { class: "row" }, el("div", { class: "value" }, "Sin hallazgos por encima del 25 %")));
+    }
+    for (const f of ai.findings) {
+      const pct = Math.round(f.probability * 100);
+      aiList.append(el("div", { class: "row ai-row" },
+        el("div", { class: "ai-head" },
+          el("span", { class: `value ${f.level}` }, f.text),
+          el("span", { class: "label" }, `${f.band} · ${pct} %`)),
+        el("div", { class: "bar" }, el("div", { class: `fill ${f.level}`, style: `width:${pct}%` }))));
+    }
+  }
+  $("#ai-section").hidden = !ai;
+
   const grid = $("#measurements");
   grid.replaceChildren();
   for (const [key, label, unit] of METRICS) {

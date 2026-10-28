@@ -129,6 +129,23 @@ def test_missing_rhythm_lead_warns():
     assert m["hr"] is None and m["warnings"]
 
 
+# ---------- digitisation helpers ----------
+
+def test_trim_rhythm_strip_drops_calibration_pulse_pixels():
+    import torch
+
+    from ecgapp.digitize import trim_rhythm_strip
+
+    mask = torch.zeros((1, 400, 1000), dtype=torch.uint8)
+    mask[0, 50:60, 100:300] = 1    # I, first column
+    mask[0, 50:60, 700:900] = 10   # V4, last column
+    mask[0, 300:320, 80:900] = 2   # II rhythm strip, starting inside the pulse
+    out = trim_rhythm_strip(mask)
+    assert (out[0, 300:320, 80:100] == 0).all()
+    assert (out[0, 300:320, 100:900] == 2).all()
+    assert (out[0, 50:60, 100:300] == 1).all()
+
+
 # ---------- rendering and API ----------
 
 def test_render_returns_png():
