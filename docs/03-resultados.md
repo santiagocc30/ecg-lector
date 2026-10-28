@@ -36,19 +36,25 @@ Comparación de cada derivación digitalizada con la señal original (264 deriva
 
 | Métrica | Media | Mediana | Peor registro |
 |---|---|---|---|
-| Correlación | **0,952** | 0,973 | 0,898 (bloqueo de rama izq. 180) |
-| SNR | **13,3 dB** | 12,7 dB | 8,7 dB (fibrilación auricular 17) |
-| RMSE | 0,056 mV | — | 0,201 mV |
+| Correlación | **0,955** | 0,973 | 0,910 (fibrilación auricular 17) |
+| SNR | **13,4 dB** | 12,7 dB | 8,7 dB (fibrilación auricular 17) |
+| RMSE | 0,055 mV | — | 0,199 mV |
 | Derivaciones detectadas | 12/12 en los 22 | | |
-| Tiempo por ECG (CPU) | **91 s** | | 130 s |
+| Tiempo por ECG (CPU) | **90 s** | | 98 s |
 
 Referencia publicada por el fabricante de la app comercial: correlación > 0,91 y SNR > 12,5 dB
 en su base PM-ECG-ID (fotos reales), < 7 s por ECG en servidor. Nuestros números son comparables,
 **pero sobre imágenes limpias**, así que no es una comparación justa.
 
-Mejoras sobre el script original de ECG-Digitiser: 4× más rápido (modelo cargado una vez y sin
-test-time augmentation) y sin el re-escalado global que destruía las amplitudes cuando una
-derivación salía de rango.
+Mejoras sobre el script original de ECG-Digitiser:
+
+- 4× más rápido (modelo cargado una vez y sin test-time augmentation).
+- Sin el re-escalado global que destruía las amplitudes cuando una derivación salía de rango.
+- La tira de ritmo (II) se recorta al rango horizontal de las columnas: la segmentación a veces
+  incluía la cola del pulso de calibración, lo que estiraba el eje de tiempo (ver §6). Afectó a 2
+  de los 22 registros: el 180 pasó de 0,898 a 0,918 de correlación media y el 256 de 0,947 a 0,995.
+- Opcional: `ECG_TILE_STEP=1.0` usa 4 parches en lugar de 9 (~40 s por ECG, con una pérdida pequeña
+  de calidad).
 
 ## 4. Mediciones (`scripts/evaluate_measurements.py`)
 
@@ -58,11 +64,14 @@ el código de mediciones) y sobre la digitalizada (prueba toda la cadena).
 
 | Medición | Señal original: media (mediana) | Digitalizada: media (mediana) |
 |---|---|---|
-| Frecuencia cardíaca | 1,3 lpm (0,4) | **1,4 lpm (0,5)** |
-| PR | 17,7 ms (8,5) | 30,0 ms (11,5) |
-| QRS | 10,9 ms (9,5) | 19,2 ms (11,8) |
-| QT | 32,2 ms (28,9) | 33,9 ms (26,4) |
-| Eje | 9,3° (5,8) | 12,7° (9,4) |
+| Frecuencia cardíaca | 1,3 lpm (0,4) | **1,3 lpm (0,3)** |
+| PR | 17,7 ms (8,5) | 23,2 ms (11,0) |
+| QRS | 10,9 ms (9,5) | 16,7 ms (11,0) |
+| QT | 32,2 ms (28,9) | 31,1 ms (26,0) |
+| Eje | 9,3° (5,8) | 11,7° (7,5) |
+
+Con la corrección de la tira de ritmo, los errores de la señal digitalizada bajaron
+(PR 30,0 → 23,2 ms; QRS 19,2 → 16,7 ms; QT 33,9 → 31,1 ms; eje 12,7 → 11,7°).
 
 ### Cómo se llegó a estos números
 
@@ -127,12 +136,14 @@ marcaba extrasístoles en casi todos los ECG.
 |---|---|---|
 | Completa | 35/44, 3 FP | 37/44, 7 FP |
 | Papel | 33/44, 7 FP | 36/44, 13 FP |
-| Digitalizada (preliminar*) | 28/44, 13 FP | 35/44, 30 FP |
+| Digitalizada | 30/44, 10 FP | 37/44, 27 FP |
 
 La diferencia media de probabilidad entre «papel» y «completa» es de solo **0,04**: el relleno con
-latidos del paciente recupera casi todo lo que pierde el formato 3×4.
+latidos del paciente recupera casi todo lo que pierde el formato 3×4. Con la señal digitalizada es
+de 0,08: la mayor parte de la pérdida restante viene de la digitalización, no del formato.
 
-\* Medido antes de corregir la lectura de la tira de ritmo (ver abajo). Pendiente de repetir.
+Antes de corregir la tira de ritmo, la señal digitalizada daba 28/44 con 13 FP (umbral 0,5) y
+35/44 con 30 FP (umbral 0,25).
 
 ### Fallo de digitalización encontrado gracias a ECG-FM
 
@@ -142,6 +153,11 @@ calibración, y como la vectorización reparte los 10 s sobre todo el ancho de l
 se desplazaban hasta ~100 ms al final de la tira. Recortar la II al rango horizontal de las
 columnas sube su correlación en el registro 180 de 0,33 a 0,57; el resto de la diferencia se debe a
 que las ondas S de V3 invaden la franja de la tira de ritmo.
+
+| Registro (bloqueo de rama izq.) | Probabilidad de bloqueo de rama izq. | Probabilidad de infarto (falsa) |
+|---|---|---|
+| 180, antes → después | 14 % → **71 %** | 71 % → 44 % |
+| 256, antes → después | 34 % → **48 %** | 66 % → 41 % |
 
 ### En la app
 
